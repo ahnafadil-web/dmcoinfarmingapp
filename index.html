@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>DM COIN FARMING — Task Redirect + Mining Fixed</title>
+<title>DM COIN FARMING — Global Mining Power + Shared Tasks</title>
 <style>
 :root{
   --bg:#0f0f11; --surface:#171718; --muted:#9aa0a6; --accent:#0a84ff;
@@ -93,18 +93,24 @@ th{color:var(--muted)}
   </section>
 
   <section id="adminTab" class="card hidden">
-    <h3>Admin</h3>
+    <h3>Admin Panel</h3>
     <input id="adminEmail" placeholder="email">
     <input id="adminPass" type="password" placeholder="password">
     <button onclick="adminLogin()">Login</button>
     <div id="adminPanel" class="hidden" style="margin-top:12px">
-      <h4>Add Task</h4>
+      <h4>Global Mining Power</h4>
+      <input id="miningPower" type="number" placeholder="Coins per minute">
+      <button onclick="setMiningPower()">Update</button>
+
+      <hr><h4>Add Task</h4>
       <input id="taskTitle" placeholder="Task Title">
       <input id="taskReward" type="number" placeholder="Reward (coins)">
       <input id="taskLink" placeholder="Task Link (URL)">
       <button onclick="addTask()">Add Task</button>
       <div id="adminTaskList"></div>
-      <hr><h4>User Withdraw Requests</h4><div id="adminWithdrawList" class="muted">No withdrawals yet.</div>
+
+      <hr><h4>Withdraw Requests</h4>
+      <div id="adminWithdrawList" class="muted">No withdrawals yet.</div>
     </div>
   </section>
 </main>
@@ -119,28 +125,22 @@ th{color:var(--muted)}
 </nav>
 
 <script>
-const DEFAULTS={farmRate:100,farmingDurationMs:24*60*60*1000,coinToUsd:0.01};
 const ADMIN={email:"ahnafadilbsja@gmail.com",pass:"dmcoin2025"};
-let state={user:null,tasks:[],withdrawals:[],referrals:[]};
+let state={global:{farmRate:100,farmingDurationMs:24*60*60*1000,coinToUsd:0.01},user:null,tasks:[],withdrawals:[],referrals:[]};
 let miningInterval=null;
 
 function $(id){return document.getElementById(id);}
-function saveState(){localStorage.setItem('dm_demo_state',JSON.stringify(state));}
+function saveState(){localStorage.setItem('dm_state',JSON.stringify(state));}
 function loadState(){
-  const raw=localStorage.getItem('dm_demo_state');
+  const raw=localStorage.getItem('dm_state');
   if(raw)state=JSON.parse(raw);
   if(!state.user){
-    const urlParams=new URLSearchParams(location.search);
-    const ref=urlParams.get('ref');
+    const ref=new URLSearchParams(location.search).get('ref');
     state.user={id:'user_'+Math.floor(Math.random()*100000),coins:0,completedTasks:[],miningStart:null};
-    if(ref){state.referrals.push(ref);}
+    if(ref)state.referrals.push(ref);
   }
-  state.tasks=state.tasks||[];
-  state.withdrawals=state.withdrawals||[];
-  state.referrals=state.referrals||[];
   saveState();
 }
-
 function updateUI(){
   $('coinBalance').innerText=`💰 ${Math.floor(state.user.coins)}`;
   $('userId').innerText='ID: '+state.user.id;
@@ -149,67 +149,30 @@ function updateUI(){
   $('profileCompleted').innerText=state.user.completedTasks.length;
   $('refLink').value=location.origin+location.pathname+'?ref='+state.user.id;
   $('refInfo').innerText=state.referrals.length?`Total Referrals: ${state.referrals.length}`:'No referrals yet.';
-  renderTasks();renderWithdrawals();renderAdminTasks();
-  resumeMining();
+  renderTasks();renderWithdrawals();renderAdminTasks();resumeMining();
 }
-
 document.querySelectorAll('.nav button').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
 function switchTab(tab){document.querySelectorAll('main section').forEach(s=>s.classList.add('hidden'));$(tab).classList.remove('hidden');}
 
-// ✅ Task System — Redirect + Reward
-function renderTasks(){
-  const el=$('taskList');el.innerHTML='';
-  state.tasks.forEach((t,i)=>{
-    const done=state.user.completedTasks.includes(i);
-    const div=document.createElement('div');div.className='task-item';
-    div.innerHTML=`<div><strong>${t.title}</strong><div class="muted">${t.reward} 💰</div></div>`;
-    const btn=document.createElement('button');
-    btn.innerText=done?'✅ Done':'Complete';
-    btn.disabled=done;
-    btn.onclick=()=>handleTask(i);
-    div.appendChild(btn);
-    el.appendChild(div);
-  });
-}
-
-function handleTask(i){
-  const t=state.tasks[i];
-  if(state.user.completedTasks.includes(i))return;
-  if(t.link){
-    window.open(t.link, '_blank'); // open new page
-  }
-  setTimeout(()=>{
-    state.user.completedTasks.push(i);
-    state.user.coins+=t.reward;
-    saveState();updateUI();
-    alert(`+${t.reward} coins added`);
-  },2000);
-}
-
-// ✅ Mining System (Fixed)
+// 🪙 Mining System
 function startMining(){
-  if(state.user.miningStart){
-    alert("Mining already running...");
-    return;
-  }
-  state.user.miningStart=Date.now();
-  saveState();
-  $('farmStatus').innerText='⛏ Mining started...';
-  $('farmButton').disabled=true;
-  runMiningProgress();
+  if(state.user.miningStart)return alert("Mining already running!");
+  state.user.miningStart=Date.now();saveState();
+  $('farmStatus').innerText='⛏ Mining started...';$('farmButton').disabled=true;
+  runMining();
 }
-function runMiningProgress(){
+function runMining(){
   clearInterval(miningInterval);
   miningInterval=setInterval(()=>{
     const elapsed=Date.now()-state.user.miningStart;
-    const duration=DEFAULTS.farmingDurationMs;
+    const duration=state.global.farmingDurationMs;
     const p=Math.min((elapsed/duration)*100,100);
     $('farmProgress').style.width=p+'%';
     const remaining=Math.max(0,duration-elapsed);
     $('farmTimer').innerText=`Time left: ${(remaining/3600000).toFixed(2)} hrs`;
     if(elapsed>=duration){
       clearInterval(miningInterval);
-      const earned=DEFAULTS.farmRate*60*24;
+      const earned=state.global.farmRate*60*24;
       state.user.coins+=earned;
       state.user.miningStart=null;
       $('farmButton').disabled=false;
@@ -222,28 +185,44 @@ function runMiningProgress(){
 function resumeMining(){
   if(state.user.miningStart){
     const elapsed=Date.now()-state.user.miningStart;
-    const duration=DEFAULTS.farmingDurationMs;
-    if(elapsed<duration){
+    if(elapsed<state.global.farmingDurationMs){
       $('farmStatus').innerText='⛏ Mining resumed...';
       $('farmButton').disabled=true;
-      runMiningProgress();
-    } else {
-      state.user.miningStart=null;
-      saveState();
-    }
+      runMining();
+    }else{state.user.miningStart=null;saveState();}
   }
 }
 $('farmButton').onclick=startMining;
 
-// ✅ Convert, Withdraw, Admin
+// 🧩 Tasks
+function renderTasks(){
+  const el=$('taskList');el.innerHTML='';
+  if(!state.tasks.length){el.innerHTML='<div class="muted">No tasks yet.</div>';return;}
+  state.tasks.forEach((t,i)=>{
+    const done=state.user.completedTasks.includes(i);
+    const div=document.createElement('div');div.className='task-item';
+    div.innerHTML=`<div><strong>${t.title}</strong><div class="muted">${t.reward} 💰</div></div>`;
+    const btn=document.createElement('button');
+    btn.innerText=done?'✅ Done':'Complete';btn.disabled=done;
+    btn.onclick=()=>handleTask(i);
+    div.appendChild(btn);el.appendChild(div);
+  });
+}
+function handleTask(i){
+  const t=state.tasks[i];
+  if(state.user.completedTasks.includes(i))return;
+  if(t.link)window.open(t.link,'_blank');
+  setTimeout(()=>{state.user.completedTasks.push(i);state.user.coins+=t.reward;saveState();updateUI();alert(`+${t.reward} coins added`);},2000);
+}
+
+// 💰 Exchange & Withdraw
 function convertCoins(){
   const amt=parseFloat($('convertAmount').value);
   if(!amt||amt<=0)return alert('Enter amount');
   if(amt>state.user.coins)return alert('Not enough coins');
-  const usd=amt*DEFAULTS.coinToUsd;
+  const usd=amt*state.global.coinToUsd;
   $('convertedResult').innerText=`≈ ${usd.toFixed(2)} USD`;
 }
-
 function requestWithdraw(){
   const amt=parseFloat($('withdrawAmount').value);
   const addr=$('withdrawAddress').value.trim();
@@ -254,9 +233,7 @@ function requestWithdraw(){
 }
 function renderWithdrawals(){
   const list=$('withdrawList'),adminList=$('adminWithdrawList');
-  if(!state.withdrawals.length){
-    list.innerText='No history';adminList.innerText='No withdrawals yet.';return;
-  }
+  if(!state.withdrawals.length){list.innerText='No history';adminList.innerText='No withdrawals yet.';return;}
   let htmlUser='<table><tr><th>Amount</th><th>Method</th><th>Status</th></tr>';
   let htmlAdmin='<table><tr><th>Amount</th><th>Address</th><th>Method</th><th>Status</th><th>Action</th></tr>';
   state.withdrawals.forEach((w,i)=>{
@@ -265,33 +242,37 @@ function renderWithdrawals(){
     <td><button class="small" onclick="updateWithdraw(${i},'Approved')">✅</button>
     <button class="small" style="background:#f44336" onclick="updateWithdraw(${i},'Rejected')">❌</button></td></tr>`;
   });
-  htmlUser+='</table>';htmlAdmin+='</table>';
-  list.innerHTML=htmlUser;adminList.innerHTML=htmlAdmin;
+  list.innerHTML=htmlUser+'</table>';adminList.innerHTML=htmlAdmin+'</table>';
 }
-function updateWithdraw(i,status){
-  state.withdrawals[i].status=status;saveState();updateUI();alert('Withdraw '+status);
-}
+function updateWithdraw(i,s){state.withdrawals[i].status=s;saveState();updateUI();alert('Withdraw '+s);}
 
+// ⚙️ Admin
 function adminLogin(){
   if($('adminEmail').value===ADMIN.email && $('adminPass').value===ADMIN.pass){
     $('adminPanel').classList.remove('hidden');updateUI();
-  } else alert('Invalid login');
+  }else alert('Invalid login');
+}
+function setMiningPower(){
+  const power=parseInt($('miningPower').value);
+  if(!power||power<=0)return alert('Enter valid number');
+  state.global.farmRate=power;saveState();alert('Mining power updated for all users!');
 }
 function addTask(){
   const t=$('taskTitle').value.trim(),r=parseInt($('taskReward').value),l=$('taskLink').value.trim();
-  if(!t||!r)return alert('Fill task info');
+  if(!t||!r)return alert('Fill all fields');
   state.tasks.push({title:t,reward:r,link:l});
   $('taskTitle').value='';$('taskReward').value='';$('taskLink').value='';
-  saveState();updateUI();
+  saveState();updateUI();alert('Task added!');
 }
 function renderAdminTasks(){
   const el=$('adminTaskList');
   if(!state.tasks.length){el.innerHTML='<div class="muted">No tasks yet</div>';return;}
   let html='<table><tr><th>Task</th><th>Reward</th><th>Link</th></tr>';
-  state.tasks.forEach(t=>{html+=`<tr><td>${t.title}</td><td>${t.reward}</td><td>${t.link||'-'}</td></tr>`;});
+  state.tasks.forEach(t=>html+=`<tr><td>${t.title}</td><td>${t.reward}</td><td>${t.link}</td></tr>`);
   html+='</table>';el.innerHTML=html;
 }
 
+// 🔗 Referral Copy
 function copyRef(){navigator.clipboard.writeText($('refLink').value);alert('Referral link copied!');}
 
 loadState();updateUI();
