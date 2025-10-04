@@ -3,11 +3,16 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>DM COIN FARMING — Global Mining Power + Shared Tasks</title>
+<title>DM COIN FARMING — Global Firebase Version (With Withdraw)</title>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-database-compat.js"></script>
+
 <style>
 :root{
-  --bg:#0f0f11; --surface:#171718; --muted:#9aa0a6; --accent:#0a84ff;
-  --success:#4caf50; --danger:#f44336; --card:#1f1f22;
+  --bg:#0f0f11;--surface:#171718;--muted:#9aa0a6;--accent:#0a84ff;
+  --success:#4caf50;--danger:#f44336;--card:#1f1f22;
   --font:"Inter",system-ui,Arial,sans-serif;
 }
 *{box-sizing:border-box}
@@ -34,6 +39,7 @@ th,td{border-bottom:1px solid rgba(255,255,255,0.06);padding:6px;text-align:left
 th{color:var(--muted)}
 </style>
 </head>
+
 <body>
 <header>
   <div>
@@ -47,6 +53,7 @@ th{color:var(--muted)}
 </header>
 
 <main>
+  <!-- 🪙 FARM TAB -->
   <section id="farmTab" class="card center">
     <img class="logo" src="https://i.ibb.co/04PQkwb/IMG-3086.png" alt="logo">
     <h2>DM COIN FARMING</h2>
@@ -57,34 +64,43 @@ th{color:var(--muted)}
     <div style="margin-top:10px"><button id="farmButton">Start Mining</button></div>
   </section>
 
+  <!-- 🧩 TASKS TAB -->
   <section id="tasksTab" class="card hidden">
     <h3>Tasks</h3>
     <div id="taskList"></div>
   </section>
 
+  <!-- 🤝 REFERRAL TAB -->
   <section id="referralTab" class="card hidden">
     <h3>Referral</h3>
     <p>Your referral link:</p>
     <input readonly id="refLink">
     <button onclick="copyRef()">Copy Link</button>
-    <p class="muted" style="margin-top:10px">Invite friends & earn 500 coins each!</p>
-    <div style="margin-top:10px" id="refInfo" class="muted">No referrals yet.</div>
+    <p class="muted">Invite friends & earn 500 coins each!</p>
   </section>
 
+  <!-- 💸 EXCHANGE TAB -->
   <section id="exchangeTab" class="card hidden">
     <h3>Exchange & Withdraw</h3>
     <input id="convertAmount" type="number" placeholder="Coins to convert">
     <button onclick="convertCoins()">Convert</button>
     <div id="convertedResult" class="muted" style="margin-top:6px"></div>
-    <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)">
+    <hr style="margin:10px 0;border:none;border-top:1px solid rgba(255,255,255,0.05)">
     <h4>Withdraw</h4>
-    <input id="withdrawAmount" type="number" placeholder="Amount">
-    <select id="withdrawMethod"><option value="sol">Solana</option><option value="dm">DM Coin</option></select>
-    <input id="withdrawAddress" placeholder="Address">
-    <button onclick="requestWithdraw()">Request Withdraw</button>
-    <div style="margin-top:12px"><h4>History</h4><div id="withdrawList" class="muted">No history yet.</div></div>
+    <input id="withdrawAmount" type="number" placeholder="Amount (coins)">
+    <select id="withdrawMethod">
+      <option value="solana">Solana</option>
+      <option value="dmcoin">DM Coin</option>
+    </select>
+    <input id="withdrawAddress" placeholder="Wallet address">
+    <button onclick="submitWithdraw()">Request Withdraw</button>
+    <div style="margin-top:10px">
+      <h4>History</h4>
+      <div id="withdrawList" class="muted">No withdrawals yet.</div>
+    </div>
   </section>
 
+  <!-- 👤 PROFILE TAB -->
   <section id="profileTab" class="card hidden">
     <h3>Profile</h3>
     <div class="task-item"><div>User ID</div><div id="profileUserId">-</div></div>
@@ -92,6 +108,7 @@ th{color:var(--muted)}
     <div class="task-item"><div>Completed Tasks</div><div id="profileCompleted">0</div></div>
   </section>
 
+  <!-- ⚙️ ADMIN TAB -->
   <section id="adminTab" class="card hidden">
     <h3>Admin Panel</h3>
     <input id="adminEmail" placeholder="email">
@@ -107,14 +124,14 @@ th{color:var(--muted)}
       <input id="taskReward" type="number" placeholder="Reward (coins)">
       <input id="taskLink" placeholder="Task Link (URL)">
       <button onclick="addTask()">Add Task</button>
-      <div id="adminTaskList"></div>
 
       <hr><h4>Withdraw Requests</h4>
-      <div id="adminWithdrawList" class="muted">No withdrawals yet.</div>
+      <div id="adminWithdraws" class="muted">Loading...</div>
     </div>
   </section>
 </main>
 
+<!-- 📱 NAVIGATION -->
 <nav class="nav">
   <button data-tab="farmTab">🏠 Farm</button>
   <button data-tab="tasksTab">📋 Tasks</button>
@@ -125,21 +142,32 @@ th{color:var(--muted)}
 </nav>
 
 <script>
+/* ---------------- Firebase Setup ---------------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyASWPlUEjeTOWVj-EShNtGaeeZQHMv3yxE",
+  authDomain: "dm-coin-farming-point.firebaseapp.com",
+  projectId: "dm-coin-farming-point",
+  storageBucket: "dm-coin-farming-point.firebasestorage.app",
+  messagingSenderId: "245444140845",
+  appId: "1:245444140845:web:7480bfa27949c180e3bda4"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* ---------------- State ---------------- */
 const ADMIN={email:"ahnafadilbsja@gmail.com",pass:"dmcoin2025"};
-let state={global:{farmRate:100,farmingDurationMs:24*60*60*1000,coinToUsd:0.01},user:null,tasks:[],withdrawals:[],referrals:[]};
+let state={global:{farmRate:100,farmingDurationMs:24*60*60*1000,coinToUsd:0.01},user:null};
 let miningInterval=null;
 
+/* ---------------- Helpers ---------------- */
 function $(id){return document.getElementById(id);}
-function saveState(){localStorage.setItem('dm_state',JSON.stringify(state));}
-function loadState(){
-  const raw=localStorage.getItem('dm_state');
-  if(raw)state=JSON.parse(raw);
-  if(!state.user){
-    const ref=new URLSearchParams(location.search).get('ref');
+function saveUser(){localStorage.setItem('dm_user',JSON.stringify(state.user));}
+function loadUser(){
+  const data=localStorage.getItem('dm_user');
+  if(data){state.user=JSON.parse(data);}else{
     state.user={id:'user_'+Math.floor(Math.random()*100000),coins:0,completedTasks:[],miningStart:null};
-    if(ref)state.referrals.push(ref);
+    saveUser();
   }
-  saveState();
 }
 function updateUI(){
   $('coinBalance').innerText=`💰 ${Math.floor(state.user.coins)}`;
@@ -147,17 +175,120 @@ function updateUI(){
   $('profileUserId').innerText=state.user.id;
   $('profileCoins').innerText=Math.floor(state.user.coins);
   $('profileCompleted').innerText=state.user.completedTasks.length;
-  $('refLink').value=location.origin+location.pathname+'?ref='+state.user.id;
-  $('refInfo').innerText=state.referrals.length?`Total Referrals: ${state.referrals.length}`:'No referrals yet.';
-  renderTasks();renderWithdrawals();renderAdminTasks();resumeMining();
+  renderWithdrawHistory();
+  resumeMining();
 }
 document.querySelectorAll('.nav button').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
 function switchTab(tab){document.querySelectorAll('main section').forEach(s=>s.classList.add('hidden'));$(tab).classList.remove('hidden');}
 
-// 🪙 Mining System
+/* ---------------- Tasks (Realtime) ---------------- */
+function listenTasks(){
+  db.ref('tasks').on('value',snap=>{
+    const data=snap.val()||{};
+    renderTasks(Object.entries(data).map(([id,t])=>({...t,id})));
+  });
+}
+function renderTasks(tasks){
+  const el=$('taskList');el.innerHTML='';
+  if(!tasks.length){el.innerHTML='<div class="muted">No tasks yet.</div>';return;}
+  tasks.forEach(t=>{
+    const done=state.user.completedTasks.includes(t.id);
+    const div=document.createElement('div');div.className='task-item';
+    div.innerHTML=`<div><strong>${t.title}</strong><div class="muted">${t.reward} 💰</div></div>`;
+    const btn=document.createElement('button');
+    btn.innerText=done?'✅ Done':'Complete';
+    btn.disabled=done;
+    btn.onclick=()=>handleTask(t);
+    div.appendChild(btn);
+    el.appendChild(div);
+  });
+}
+function handleTask(t){
+  if(state.user.completedTasks.includes(t.id))return;
+  if(t.link)window.open(t.link,'_blank');
+  setTimeout(()=>{
+    state.user.completedTasks.push(t.id);
+    state.user.coins+=parseInt(t.reward);
+    saveUser();updateUI();
+    alert(`+${t.reward} coins added`);
+  },2000);
+}
+
+/* ---------------- Withdraw System ---------------- */
+function submitWithdraw(){
+  const amt=parseFloat($('withdrawAmount').value);
+  const addr=$('withdrawAddress').value.trim();
+  const method=$('withdrawMethod').value;
+  if(!amt||!addr)return alert('Fill all fields');
+  if(amt>state.user.coins)return alert('Not enough coins!');
+  const ref=db.ref('withdraws').push();
+  ref.set({user:state.user.id,amount:amt,method,address:addr,status:"Pending",time:Date.now()});
+  state.user.coins-=amt;
+  saveUser();updateUI();
+  alert("Withdraw request sent!");
+}
+function listenWithdrawsAdmin(){
+  db.ref('withdraws').on('value',snap=>{
+    const data=snap.val()||{};
+    renderAdminWithdraws(Object.entries(data).map(([id,w])=>({...w,id})));
+  });
+}
+function renderWithdrawHistory(){
+  db.ref('withdraws').orderByChild('user').equalTo(state.user.id).once('value',snap=>{
+    const data=snap.val()||{};
+    const el=$('withdrawList');
+    if(!Object.keys(data).length){el.innerHTML='No withdrawals yet.';return;}
+    let html='<table><tr><th>Amount</th><th>Method</th><th>Status</th></tr>';
+    Object.values(data).forEach(w=>{
+      html+=`<tr><td>${w.amount}</td><td>${w.method}</td><td>${w.status}</td></tr>`;
+    });
+    el.innerHTML=html+'</table>';
+  });
+}
+function renderAdminWithdraws(list){
+  const el=$('adminWithdraws');
+  if(!list.length){el.innerHTML='No withdraw requests.';return;}
+  let html='<table><tr><th>User</th><th>Amount</th><th>Method</th><th>Address</th><th>Status</th><th>Action</th></tr>';
+  list.forEach(w=>{
+    html+=`<tr><td>${w.user}</td><td>${w.amount}</td><td>${w.method}</td><td>${w.address}</td><td>${w.status}</td>
+    <td><button class="small" onclick="updateWithdraw('${w.id}','Approved')">✅</button>
+    <button class="small" style="background:#f44336" onclick="updateWithdraw('${w.id}','Rejected')">❌</button></td></tr>`;
+  });
+  el.innerHTML=html+'</table>';
+}
+function updateWithdraw(id,status){
+  db.ref('withdraws/'+id+'/status').set(status);
+  alert('Withdraw '+status+'!');
+}
+
+/* ---------------- Admin ---------------- */
+function adminLogin(){
+  if($('adminEmail').value===ADMIN.email && $('adminPass').value===ADMIN.pass){
+    $('adminPanel').classList.remove('hidden');
+    listenWithdrawsAdmin();
+  }else alert('Invalid login');
+}
+function addTask(){
+  const title=$('taskTitle').value.trim();
+  const reward=parseInt($('taskReward').value);
+  const link=$('taskLink').value.trim();
+  if(!title||!reward)return alert('Fill all fields');
+  const id=db.ref().child('tasks').push().key;
+  db.ref('tasks/'+id).set({title,reward,link});
+  $('taskTitle').value='';$('taskReward').value='';$('taskLink').value='';
+  alert('✅ Task added globally!');
+}
+function setMiningPower(){
+  const power=parseInt($('miningPower').value);
+  if(!power||power<=0)return alert('Enter valid number');
+  db.ref('global/farmRate').set(power);
+  alert('Global mining power updated!');
+}
+
+/* ---------------- Mining System ---------------- */
 function startMining(){
   if(state.user.miningStart)return alert("Mining already running!");
-  state.user.miningStart=Date.now();saveState();
+  state.user.miningStart=Date.now();saveUser();
   $('farmStatus').innerText='⛏ Mining started...';$('farmButton').disabled=true;
   runMining();
 }
@@ -178,7 +309,7 @@ function runMining(){
       $('farmButton').disabled=false;
       $('farmStatus').innerText='✅ Mining complete';
       $('farmTimer').innerText='You earned '+earned+' coins!';
-      saveState();updateUI();
+      saveUser();updateUI();
     }
   },1000);
 }
@@ -189,33 +320,12 @@ function resumeMining(){
       $('farmStatus').innerText='⛏ Mining resumed...';
       $('farmButton').disabled=true;
       runMining();
-    }else{state.user.miningStart=null;saveState();}
+    }else{state.user.miningStart=null;saveUser();}
   }
 }
 $('farmButton').onclick=startMining;
 
-// 🧩 Tasks
-function renderTasks(){
-  const el=$('taskList');el.innerHTML='';
-  if(!state.tasks.length){el.innerHTML='<div class="muted">No tasks yet.</div>';return;}
-  state.tasks.forEach((t,i)=>{
-    const done=state.user.completedTasks.includes(i);
-    const div=document.createElement('div');div.className='task-item';
-    div.innerHTML=`<div><strong>${t.title}</strong><div class="muted">${t.reward} 💰</div></div>`;
-    const btn=document.createElement('button');
-    btn.innerText=done?'✅ Done':'Complete';btn.disabled=done;
-    btn.onclick=()=>handleTask(i);
-    div.appendChild(btn);el.appendChild(div);
-  });
-}
-function handleTask(i){
-  const t=state.tasks[i];
-  if(state.user.completedTasks.includes(i))return;
-  if(t.link)window.open(t.link,'_blank');
-  setTimeout(()=>{state.user.completedTasks.push(i);state.user.coins+=t.reward;saveState();updateUI();alert(`+${t.reward} coins added`);},2000);
-}
-
-// 💰 Exchange & Withdraw
+/* ---------------- Exchange & Referral ---------------- */
 function convertCoins(){
   const amt=parseFloat($('convertAmount').value);
   if(!amt||amt<=0)return alert('Enter amount');
@@ -223,59 +333,17 @@ function convertCoins(){
   const usd=amt*state.global.coinToUsd;
   $('convertedResult').innerText=`≈ ${usd.toFixed(2)} USD`;
 }
-function requestWithdraw(){
-  const amt=parseFloat($('withdrawAmount').value);
-  const addr=$('withdrawAddress').value.trim();
-  const m=$('withdrawMethod').value;
-  if(!amt||!addr)return alert('Fill all fields');
-  state.withdrawals.push({amount:amt,method:m,address:addr,status:'Pending'});
-  saveState();updateUI();alert('Withdraw requested');
-}
-function renderWithdrawals(){
-  const list=$('withdrawList'),adminList=$('adminWithdrawList');
-  if(!state.withdrawals.length){list.innerText='No history';adminList.innerText='No withdrawals yet.';return;}
-  let htmlUser='<table><tr><th>Amount</th><th>Method</th><th>Status</th></tr>';
-  let htmlAdmin='<table><tr><th>Amount</th><th>Address</th><th>Method</th><th>Status</th><th>Action</th></tr>';
-  state.withdrawals.forEach((w,i)=>{
-    htmlUser+=`<tr><td>${w.amount}</td><td>${w.method}</td><td>${w.status}</td></tr>`;
-    htmlAdmin+=`<tr><td>${w.amount}</td><td>${w.address}</td><td>${w.method}</td><td>${w.status}</td>
-    <td><button class="small" onclick="updateWithdraw(${i},'Approved')">✅</button>
-    <button class="small" style="background:#f44336" onclick="updateWithdraw(${i},'Rejected')">❌</button></td></tr>`;
-  });
-  list.innerHTML=htmlUser+'</table>';adminList.innerHTML=htmlAdmin+'</table>';
-}
-function updateWithdraw(i,s){state.withdrawals[i].status=s;saveState();updateUI();alert('Withdraw '+s);}
-
-// ⚙️ Admin
-function adminLogin(){
-  if($('adminEmail').value===ADMIN.email && $('adminPass').value===ADMIN.pass){
-    $('adminPanel').classList.remove('hidden');updateUI();
-  }else alert('Invalid login');
-}
-function setMiningPower(){
-  const power=parseInt($('miningPower').value);
-  if(!power||power<=0)return alert('Enter valid number');
-  state.global.farmRate=power;saveState();alert('Mining power updated for all users!');
-}
-function addTask(){
-  const t=$('taskTitle').value.trim(),r=parseInt($('taskReward').value),l=$('taskLink').value.trim();
-  if(!t||!r)return alert('Fill all fields');
-  state.tasks.push({title:t,reward:r,link:l});
-  $('taskTitle').value='';$('taskReward').value='';$('taskLink').value='';
-  saveState();updateUI();alert('Task added!');
-}
-function renderAdminTasks(){
-  const el=$('adminTaskList');
-  if(!state.tasks.length){el.innerHTML='<div class="muted">No tasks yet</div>';return;}
-  let html='<table><tr><th>Task</th><th>Reward</th><th>Link</th></tr>';
-  state.tasks.forEach(t=>html+=`<tr><td>${t.title}</td><td>${t.reward}</td><td>${t.link}</td></tr>`);
-  html+='</table>';el.innerHTML=html;
+function copyRef(){
+  const link=location.origin+location.pathname+'?ref='+state.user.id;
+  navigator.clipboard.writeText(link);
+  alert('Referral link copied!');
 }
 
-// 🔗 Referral Copy
-function copyRef(){navigator.clipboard.writeText($('refLink').value);alert('Referral link copied!');}
-
-loadState();updateUI();
+/* ---------------- INIT ---------------- */
+loadUser();
+updateUI();
+listenTasks();
 </script>
 </body>
 </html>
+
